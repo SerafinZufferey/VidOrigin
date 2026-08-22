@@ -1,27 +1,30 @@
 # vidOrigin
 
-vidOrigin is a moderator-triggered Reddit Devvit tool for native Reddit images, galleries, and videos. It posts one concise comment linking to temporary reverse-image-search landing pages.
+vidOrigin automatically analyzes new native Reddit images, galleries, videos, native Reddit GIFs, and direct external HTTPS GIF links. It performs a Google Cloud Vision Web Detection check, posts one concise app-account comment with cautious possible matches, and keeps manual reverse-search provider pages separate from the automatic analysis.
 
 ## Feasibility and architecture
 
-This project targets Devvit 0.14.1 and the current `devvit.json`/Devvit Web server architecture. It is server-only: there is no React client, custom post, or webview because a moderator menu action and server endpoint are sufficient. “Bare” is not a current Devvit Web template name. The app slug is `vidorigin` because Devvit requires lowercase app names; the product name shown to people is **vidOrigin**.
+This project targets Devvit 0.14.1 and the current `devvit.json`/Devvit Web server architecture. It is server-only: there is no React client, custom post, or webview because submission triggers and server endpoints are sufficient. “Bare” is not a current Devvit Web template name. The app slug is `vidorigin` because Devvit requires lowercase app names; the product name shown to people is **vidOrigin**.
 
 ```text
-Reddit post menu → automatic media detection
-  -> Devvit server (moderator check, Reddit API, Redis lock/state)
+Reddit onPostSubmit/onPostUpdate trigger → automatic media detection
+  -> Devvit server (Reddit API, Redis lock/state)
   -> HTTPS + timestamped HMAC request
   -> Node.js backend
        -> image: highest-quality i.redd.it/preview.redd.it image
        -> gallery: all supported gallery images, subject to configured limits
-       -> video: allowlisted v.redd.it download, FFprobe/FFmpeg sampling,
-          contrast/black-frame scoring, and dHash deduplication
-       -> randomized temporary JPEG assets and provider landing pages
-  -> Devvit app-account comment
+       -> video/GIF: FFprobe/FFmpeg sampling and ten selected frames
+       -> Google Cloud Vision Web Detection
+       -> automatic-analysis files deleted immediately
+  -> Devvit app-account comment with cautious possible matches
+  -> manual provider click later creates a separate temporary media session
 ```
 
 The backend is required because Devvit does not provide FFmpeg or durable process/file-system facilities for this workload. Devvit HTTP fetches have a 30-second limit, so the app uses a 28-second request timeout and the backend caps FFmpeg work. Long, large, slow, or difficult videos fail without a public comment. Devvit external callback endpoints could support longer asynchronous jobs, but they are currently limited-access; this version does not depend on them.
 
-Media is detected without moderator input. Native video uses `Post.secureMedia.redditVideo.fallbackUrl`; a gallery uses valid entries from `Post.gallery`; a single image uses the native Reddit URL in `Post.url`. The backend independently accepts only HTTPS `v.redd.it`, `i.redd.it`, and `preview.redd.it`, validates DNS and redirects, and never accepts a browser-supplied fetch target.
+Media is detected without moderator input. Native video and GIF uploads use `Post.secureMedia.redditVideo`, including its documented `isGif` flag; a gallery uses valid entries from `Post.gallery`; a single image or direct `.gif` HTTPS link uses `Post.url`. External GIF hosts must be explicitly listed in the comma-separated `EXTERNAL_GIF_HOSTS` backend environment variable. This allows non-Reddit GIF services without turning the backend into an arbitrary URL fetcher. Unsupported submissions are ignored without a public error comment. The backend independently validates media hosts, DNS, redirects, types, sizes, duration, and pixel counts.
+
+The automatic analysis and manual search are independent. Automatic processing happens once after submission and its working media is deleted immediately. The stable provider links retain only a randomized recovery recipe. Opening a provider link creates a fresh temporary manual session when none is active; after that session expires, opening the same provider link recreates it. Videos and GIFs must be downloaded and sampled again because reverse-image providers require still images. Configure `DATA_DIR` on a Railway persistent Volume so recovery recipes survive deployments. A Reddit `onPostDelete` event deletes the recipe and any active manual media.
 
 Implemented provider landing pages: Google Lens, SauceNAO, Yandex Images, and TinEye. Each landing page exposes one user-clicked search per image or selected video frame, while the public Reddit comment still contains only one link per provider. These are public consumer URL-search entry points, not claimed APIs; provider behavior can change. Google Images is not listed separately because its old reverse-search flow is now Google Lens. IQDB and Bing Visual Search are not included because they do not currently provide reliable URL-based search links for this workflow. No provider is scraped, no tabs open automatically, and no result is described as definitely original.
 
@@ -69,7 +72,7 @@ vidOrigin/
 - Only native Reddit hosts are accepted: `v.redd.it` for video and `i.redd.it`/`preview.redd.it` for images. Credentials, ports, private/reserved DNS targets, unexpected content, excess redirects, oversized streams, slow requests, excessive duration, pixel bombs, and oversized galleries are rejected.
 - Defaults: 100 MiB, 10 minutes, 20 API requests/minute/IP, two processing jobs, 60-minute session TTL.
 - Session IDs contain 256 random bits. Frame names contain 128 random bits. File paths come only from validated identifiers and stored allowlists.
-- Source video and downloaded source images are deleted immediately after processing. Video candidate frames are deleted after selection. Search JPEGs plus minimal session metadata (post ID, subreddit, media type, timestamps, random filenames) remain until TTL, then the one-minute cleanup sweep deletes the directory. A crash/restart cleanup also removes abandoned directories. No media is permanently archived.
+- Automatic-analysis downloads and frames are deleted immediately after Google Cloud Vision returns. Manual search JPEGs remain only for `SESSION_TTL_MINUTES`, then the cleanup sweep deletes them. A recovery recipe contains the post ID, media type, Reddit media references, automatic findings, and a random 256-bit identifier; it contains no media files and is removed when Reddit reports that the post was deleted. No media is permanently archived.
 - Logs redact signatures and source media URLs. They contain event type, post ID, frame count, duration, and sanitized errors. Do not enable debug logging in production unless needed.
 - The backend is not an open proxy: the only processing route is authenticated and the only files served must belong to an unexpired stored session.
 
@@ -134,6 +137,10 @@ notepad '.\backend\.env'
 
 Set `DEVVIT_SHARED_SECRET` to the random value. For local-only testing set `PUBLIC_BASE_URL=http://localhost:8080`. Save the file.
 
+Set `GOOGLE_CLOUD_VISION_API_KEY` to a restricted key for a Google Cloud project with the Cloud Vision API and billing enabled. Restrict the key to the Cloud Vision API and store it only in `backend/.env` locally and Railway Variables in production.
+
+Set `EXTERNAL_GIF_HOSTS` to trusted GIF media hostnames separated by commas, without `https://` or paths. Redirects must remain on an allowed hostname and the response must actually be `image/gif`. Example: `media.giphy.com,i.imgur.com`.
+
 Start the backend from the **vidOrigin root folder**:
 
 ```powershell
@@ -157,11 +164,11 @@ npm run start -w backend
 
 ## Deploy the backend on Render
 
-Render is beginner-friendly, supports Docker, HTTPS, environment variables, logs, and the supplied image installs FFmpeg. A paid always-on web service is recommended: free services may sleep, making Devvit's 30-second fetch limit unreliable. Ephemeral disk is acceptable because all files are intentionally temporary; a restart deletes them early and existing links then expire. No database or persistent disk is required.
+Render supports Docker, HTTPS, environment variables, logs, and the supplied image installs FFmpeg. A paid always-on web service is recommended because Devvit HTTP calls have a short timeout. Mount a persistent disk at `/var/lib/vidorigin` so the small recovery recipes survive deployments; frames and downloaded media remain temporary inside that location. On Railway, use a persistent Volume, mount it at `/data`, and set `DATA_DIR=/data`.
 
 1. Create a GitHub repository and push the **vidOrigin root folder**. Never commit `backend/.env`.
 2. Sign in at <https://render.com>, choose **New + → Blueprint**, connect the repository, and select `render.yaml`.
-3. For `DEVVIT_SHARED_SECRET`, enter the same strong random value used by Devvit. For the first deploy, set `PUBLIC_BASE_URL` to the expected Render URL, such as `https://vidorigin-backend.onrender.com`. If Render assigns a different hostname, update the variable and redeploy.
+3. For `DEVVIT_SHARED_SECRET`, enter the same strong random value used by Devvit. Add the restricted `GOOGLE_CLOUD_VISION_API_KEY`. For the first deploy, set `PUBLIC_BASE_URL` to the expected public backend URL. If the host assigns a different hostname, update the variable and redeploy.
 4. Deploy. Render builds the Docker image, installs FFmpeg, and provides HTTPS automatically.
 5. Open `https://YOUR-SERVICE.onrender.com/healthz`. It should return `{"ok":true,...}`.
 6. View backend logs in **Render Dashboard → vidorigin-backend → Logs**. Updates are deployed by pushing to the connected branch or choosing **Manual Deploy → Deploy latest commit**.
@@ -208,16 +215,16 @@ npx devvit upload
 npx devvit install YOUR_TEST_SUBREDDIT
 ```
 
-On Reddit, create three native test posts: one single image, one multi-image gallery, and one video. Wait until Reddit finishes processing uploads. Open each post while signed in as a moderator, open the post's three-dot/Mod Tools menu, and choose **Reverse Source Search**. The app detects the media type automatically. Regular users should not see the action. A successful run shows a toast and creates one comment by the Devvit app account (`u/vidorigin` when that is the registered slug), not by the clicking moderator. The app deliberately uses `runAs: 'APP'`. It does not distinguish/sticky the comment and requests no user-impersonation scope.
+On Reddit, create native test posts for a single image, gallery, GIF, and video. No moderator action is required. The submission trigger detects the media type, performs the automatic web check, and creates one comment by the Devvit app account. A post-update trigger safely retries posts whose Reddit video transcode was not ready at initial submission. Duplicate state and a per-post lock prevent repeated comments.
 
 Verify that:
 
 1. the comment contains one link for each implemented provider;
 2. the subreddit contact text opens `https://www.reddit.com/message/compose?to=/r/YOUR_TEST_SUBREDDIT` (URL-encoded in Markdown);
-3. a landing page shows the single image, all accepted gallery images, or 5-7 video frames with user-clicked search buttons;
-4. a second trigger reports that a comment already exists;
-5. after the TTL, media/page requests show the clean expired message;
-6. a link post, YouTube post, or text post produces a moderator toast and no comment.
+3. a landing page shows the automatic findings above the original image/gallery images or ten selected video/GIF frames;
+4. repeated submission/update events do not create duplicate comments;
+5. after the manual TTL, opening the same provider link rebuilds a fresh manual session;
+6. unsupported posts are ignored and create no comment.
 
 Devvit logs, from the **devvit folder**:
 
@@ -267,7 +274,7 @@ For backend changes, push the repository and watch the Render deployment/logs. F
 ## Troubleshooting
 
 - **`node`, `npm`, `ffmpeg`, or `ffprobe` not recognized:** close all PowerShell windows and reopen one. Reinstall or correct the Windows `Path`.
-- **Menu item missing:** confirm the app is installed, refresh Reddit, use a moderator account, open the post three-dot menu, and check playtest logs. Mobile clients may need a full restart.
+- **No automatic comment:** confirm the app is installed, both Devvit backend settings are configured, Cloud Vision is enabled, and inspect the playtest and backend logs. Unsupported posts intentionally receive no comment.
 - **“vidOrigin is not configured”:** rerun both `npx devvit settings set` commands from the devvit folder.
 - **HTTP/domain error:** the hostname in `devvit.json` must exactly match the backend URL and must be approved in Developer Settings. Do not include protocol/path in `domains`.
 - **401 from backend:** the Devvit secret and Render secret differ, or the service clock is badly wrong. Set both to the same value and redeploy.
@@ -277,10 +284,6 @@ For backend changes, push the repository and watch the Render deployment/logs. F
 - **FFmpeg failure/no frames:** verify FFmpeg locally; inspect sanitized backend logs. Corrupt, DRM-protected, extremely dark, or unusual-codec media can fail cleanly.
 - **Comment creation failure:** the session is still temporary but no success state is written; inspect Devvit logs and retry. The cleanup sweep removes the unused session.
 - **Duplicate lock appears stuck:** locks expire after two minutes. Successful-post state intentionally persists to prevent duplicate comments; uninstalling/reinstalling resets installation Redis.
-
-## Future automatic mode
-
-The processing flow is isolated behind one menu endpoint and the backend session API. A future `onPostSubmit` trigger and a subreddit boolean setting can call the same orchestration function. No submission trigger is registered now, and automatic analysis is disabled by design.
 
 ## Current official references
 

@@ -5,16 +5,10 @@
     "dir": "dist/server",
     "entry": "index.cjs"
   },
-  "menu": {
-    "items": [
-      {
-        "label": "Reverse Source Search",
-        "description": "Find possible earlier sources for this post's media",
-        "location": "post",
-        "forUserType": "moderator",
-        "endpoint": "/internal/menu/reverse-source"
-      }
-    ]
+  "triggers": {
+    "onPostSubmit": "/internal/triggers/post-submit",
+    "onPostUpdate": "/internal/triggers/post-update",
+    "onPostDelete": "/internal/triggers/post-delete"
   },
   "permissions": {
   "reddit": true,

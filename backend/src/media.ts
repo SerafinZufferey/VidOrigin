@@ -15,6 +15,7 @@ const IMAGE_HOSTS=new Set([
   'preview.redd.it',
   'encrypted-tbn0.gstatic.com'
 ]);
+const GIF_HOSTS=new Set([...IMAGE_HOSTS,...config.EXTERNAL_GIF_HOSTS.split(',').map(host=>host.trim().toLowerCase()).filter(Boolean)]);
 
 const isPrivate=(ip:string)=>
   ip==='::1' ||
@@ -100,6 +101,8 @@ async function validateExternalVideoPage(raw:string):Promise<URL>{
 
   return u;
 }
+
+export const validateGifUrl=(raw:string)=>validateUrl(raw,GIF_HOSTS,'GIF');
 
 export async function downloadExternalVideo(
   raw:string,
@@ -252,7 +255,9 @@ export async function downloadVideo(
 
 export async function downloadImage(
   url:URL,
-  destination:string
+  destination:string,
+  validateRedirect:(raw:string)=>Promise<URL>=validateImageUrl,
+  gifOnly=false
 ):Promise<number>{
   let current=url;
 
@@ -274,7 +279,7 @@ export async function downloadImage(
         );
       }
 
-      current=await validateImageUrl(
+      current=await validateRedirect(
         new URL(location,current).toString()
       );
 
@@ -294,14 +299,12 @@ export async function downloadImage(
       .trim()
       .toLowerCase();
 
-    if(
-      ![
+    if(gifOnly?type!=='image/gif':![
         'image/jpeg',
         'image/png',
         'image/webp',
         'image/gif'
-      ].includes(type)
-    ){
+      ].includes(type)){
       throw new Error(
         'The image host returned an unexpected image content type.'
       );
