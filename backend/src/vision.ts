@@ -1,7 +1,7 @@
 import {promises as fs} from 'node:fs';
 import {config} from './config.js';
 
-export type SourceMatch={url:string;title:string;frameCount:number;kind:'full'|'partial'|'page'};
+export type SourceMatch={url:string;title:string;frameCount:number;kind:'full'|'partial'};
 export type SourceAnalysis={summary:string;matches:SourceMatch[];labels:string[]};
 
 type WebPage={url?:string;pageTitle?:string;fullMatchingImages?:unknown[];partialMatchingImages?:unknown[]};
@@ -33,15 +33,19 @@ export async function analyzeSources(files:string[]):Promise<SourceAnalysis>{
     const seen=new Set<string>();
     for(const page of item.webDetection?.pagesWithMatchingImages??[]){
       const url=safeWebUrl(page.url);if(!url||seen.has(url))continue;seen.add(url);
-      const kind:SourceMatch['kind']=page.fullMatchingImages?.length?'full':page.partialMatchingImages?.length?'partial':'page';
+      const kind=page.fullMatchingImages?.length?'full':page.partialMatchingImages?.length?'partial':undefined;
+      if(!kind)continue;
       const current=matches.get(url);
-      if(current){current.frameCount++;if(kind==='full')current.kind='full';else if(kind==='partial'&&current.kind==='page')current.kind='partial';}
+      if(current){current.frameCount++;if(kind==='full')current.kind='full';}
       else matches.set(url,{url,title:(page.pageTitle??new URL(url).hostname).replace(/<[^>]*>/g,'').slice(0,160),frameCount:1,kind});
     }
   }
-  const ranked=[...matches.values()].sort((a,b)=>b.frameCount-a.frameCount||Number(b.kind==='full')-Number(a.kind==='full')).slice(0,10);
+  const ranked=[...matches.values()]
+    .filter(match=>match.kind==='full'||match.frameCount>=2)
+    .sort((a,b)=>Number(b.kind==='full')-Number(a.kind==='full')||b.frameCount-a.frameCount)
+    .slice(0,5);
   const summary=ranked.length
-    ? `${ranked.length} possible matching page${ranked.length===1?' was':'s were'} found across the selected media. The strongest lead matched ${ranked[0]!.frameCount} of ${files.length} analyzed ${files.length===1?'image':'images'}. These are possible earlier appearances, not proof of original authorship.`
-    : `No reliable matching pages were returned for the ${files.length} analyzed ${files.length===1?'image':'images'}. This does not prove that the media is original or previously unpublished.`;
+    ? `${ranked.length} stronger possible source ${ranked.length===1?'lead was':'leads were'} found. The strongest lead is ${ranked[0]!.kind==='full'?'an exact-image match':`supported by ${ranked[0]!.frameCount} separate frames`}. Manual review is still required; this does not establish original authorship.`
+    : `No sufficiently strong source match was found. Weak visual similarities were omitted because they can be unrelated. This does not prove that the media is original or previously unpublished.`;
   return{summary,matches:ranked,labels:[...labels].slice(0,8)};
 }
