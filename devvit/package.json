@@ -1,0 +1,6 @@
+{
+  "name":"vidorigin-devvit","version":"1.0.0","private":true,"type":"module",
+  "scripts":{"build":"node esbuild.mjs","bundle":"node esbuild.mjs","check":"tsc --noEmit","test":"vitest run","dev":"devvit playtest","upload":"devvit upload","launch":"devvit publish"},
+  "dependencies":{"@devvit/web":"0.14.1","hono":"4.9.2"},
+  "devDependencies":{"devvit":"0.14.1","esbuild":"0.25.9","@types/node":"22.17.2","typescript":"5.9.2","vitest":"3.2.4"}
+}

@@ -1,0 +1,1 @@
+{"name":"vidorigin","version":"1.0.0","private":true,"workspaces":["devvit","backend"],"engines":{"node":">=22.2.0"},"scripts":{"build":"npm run build -w backend && npm run build -w devvit","test":"npm run test -w backend && npm run test -w devvit","check":"npm run check -w backend && npm run check -w devvit"}}

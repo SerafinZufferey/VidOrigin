@@ -1,0 +1,46 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "vidorigin",
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Reverse Source Search",
+        "description": "Find possible earlier sources for this post's media",
+        "location": "post",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/reverse-source"
+      }
+    ]
+  },
+  "permissions": {
+    "reddit": true,
+    "redis": true,
+    "http": {
+      "enable": true,
+      "domains": [
+        "identifying-functions-receiver-zip.trycloudflare.com",
+        "wzfzpbaxrqdtmvspiss.supabase.co"
+      ]
+    }
+  },
+  "settings": {
+    "global": {
+      "backend-url": {
+        "type": "string",
+        "label": "vidOrigin backend URL"
+      },
+      "backend-secret": {
+        "type": "string",
+        "label": "Backend shared secret",
+        "isSecret": true
+      }
+    }
+  },
+  "scripts": {
+    "build": "npm run bundle"
+  }
+}

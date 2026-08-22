@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: vidorigin-backend
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    healthCheckPath: /healthz
+    envVars:
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: DEVVIT_SHARED_SECRET
+        sync: false
+      - key: SESSION_TTL_MINUTES
+        value: 60
+      - key: MAX_VIDEO_BYTES
+        value: 104857600
+      - key: MAX_VIDEO_DURATION_SECONDS
+        value: 600
+      - key: MAX_IMAGE_BYTES
+        value: 26214400
+      - key: MAX_GALLERY_IMAGES
+        value: 20
+      - key: MAX_IMAGE_PIXELS
+        value: 50000000
+      - key: MAX_CONCURRENT_JOBS
+        value: 2
+      - key: DATA_DIR
+        value: /var/lib/vidorigin
+      - key: TRUST_PROXY
+        value: 1
