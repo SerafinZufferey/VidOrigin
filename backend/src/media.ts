@@ -9,6 +9,64 @@ import sharp from 'sharp';
 import {config} from './config.js';
 
 const VIDEO_HOSTS=new Set(['v.redd.it']);
+export const isNativeRedditVideo=(raw:string)=>{
+  try{
+    const u=new URL(raw);
+    return u.protocol==='https:' && !u.username && !u.password && !u.port && VIDEO_HOSTS.has(u.hostname.toLowerCase());
+  }catch{
+    return false;
+  }
+};
+
+async function validateExternalVideoPage(raw:string):Promise<URL>{
+  const u=new URL(raw);
+  if(u.protocol!=='https:'||u.username||u.password||u.port) {
+    throw new Error('Unsupported external video URL.');
+  }
+
+  const addresses=await lookup(u.hostname,{all:true});
+  if(!addresses.length||addresses.some(a=>isPrivate(a.address))) {
+    throw new Error('The external video host resolved to an unsafe address.');
+  }
+
+  return u;
+}
+
+export async function downloadExternalVideo(raw:string,destination:string):Promise<void>{
+  const url=await validateExternalVideoPage(raw);
+
+  await new Promise<void>((resolve,reject)=>{
+    const child=spawn('yt-dlp',[
+      '--no-playlist',
+      '--no-warnings',
+      '--max-filesize',`${config.MAX_VIDEO_BYTES}`,
+      '--match-filter',`duration <= ${config.MAX_VIDEO_DURATION_SECONDS}`,
+      '--merge-output-format','mp4',
+      '--output',destination,
+      url.toString()
+    ],{
+      windowsHide:true,
+      stdio:['ignore','pipe','pipe']
+    });
+
+    let err='';
+    const timer=setTimeout(()=>{
+      child.kill('SIGKILL');
+      reject(new Error('External video download timed out.'));
+    },60_000);
+
+    child.stderr.on('data',d=>err+=d);
+    child.on('error',error=>{
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on('close',code=>{
+      clearTimeout(timer);
+      if(code===0) resolve();
+      else reject(new Error(`External video download failed: ${err.slice(-500)}`));
+    });
+  });
+}
 const IMAGE_HOSTS=new Set(['i.redd.it','preview.redd.it']);
 const isPrivate=(ip:string)=>ip==='::1'||ip.startsWith('10.')||ip.startsWith('127.')||ip.startsWith('192.168.')||ip.startsWith('169.254.')||ip.startsWith('fc')||ip.startsWith('fd')||(/^172\.(1[6-9]|2\d|3[01])\./).test(ip);
 async function validateUrl(raw:string,hosts:Set<string>,kind:string):Promise<URL>{const u=new URL(raw);if(u.protocol!=='https:'||u.username||u.password||u.port||!hosts.has(u.hostname.toLowerCase()))throw new Error(`Unsupported ${kind} host. Only native Reddit media is accepted.`);const addresses=await lookup(u.hostname,{all:true});if(!addresses.length||addresses.some(a=>isPrivate(a.address)))throw new Error(`The ${kind} host resolved to an unsafe address.`);return u;}

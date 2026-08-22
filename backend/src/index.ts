@@ -9,7 +9,7 @@ import {z} from 'zod';
 import {config} from './config.js';
 import {verifySignature} from './auth.js';
 import {cleanup,createSessionDir,initializeStore,loadSession,root,saveSession} from './store.js';
-import {downloadImage,downloadVideo,extractCandidates,prepareImage,probe,selectFrames,validateImageUrl,validateMediaUrl} from './media.js';
+import {downloadImage,downloadVideo,downloadExternalVideo,extractCandidates,prepareImage,probe,selectFrames,validateImageUrl,validateMediaUrl,isNativeRedditVideo} from './media.js';
 import {providers,providerBySlug} from './providers.js';
 import {expiredPage,landingPage} from './pages.js';
 
@@ -36,8 +36,20 @@ app.post('/api/v1/sessions',async(req,res)=>{
   try{
     const created=await createSessionDir();dir=created.dir;let assets:string[];let duration:number|undefined;
     if(parsed.data.mediaType==='video'){
-      const media=await validateMediaUrl(parsed.data.mediaUrls[0]);const video=path.join(dir,'source.mp4');await downloadVideo(media,video);duration=await probe(video);const candidates=await extractCandidates(video,dir,duration);await fs.unlink(video).catch(()=>undefined);assets=await selectFrames(candidates,dir,7);
-    }else{
+  const rawVideoUrl=parsed.data.mediaUrls[0];
+  const video=path.join(dir,'source.mp4');
+
+  if(isNativeRedditVideo(rawVideoUrl)){
+    const media=await validateMediaUrl(rawVideoUrl);
+    await downloadVideo(media,video);
+  }else{
+    await downloadExternalVideo(rawVideoUrl,video);
+  }
+
+  duration=await probe(video);
+  const candidates=await extractCandidates(video,dir,duration);
+  await fs.unlink(video).catch(()=>undefined);
+  assets=await selectFrames(candidates,dir,7);    }else{
       let totalBytes=0;assets=[];
       for(const [index,raw] of parsed.data.mediaUrls.entries()){
         const media=await validateImageUrl(raw);const source=path.join(dir,`source-${index}.image`);totalBytes+=await downloadImage(media,source);if(totalBytes>config.MAX_VIDEO_BYTES)throw new Error('The gallery is too large to process.');assets.push(await prepareImage(source,dir));
