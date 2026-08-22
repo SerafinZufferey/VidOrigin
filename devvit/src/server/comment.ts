@@ -1,5 +1,5 @@
 export type ProviderLink = { name: string; url: string };
-export type SourceAnalysis={summary:string;matches:{url:string;title:string;frameCount:number;kind:'full'|'partial'}[];labels:string[]};
+export type SourceAnalysis={summary:string;description?:string;matches:{url:string;title:string;frameCount:number;kind:'full'|'partial'}[];labels:string[]};
 const markdownLabel=(value:string)=>value.replace(/[\[\]\\]/g,'').slice(0,160);
 const markdownUrl=(value:string)=>value.replace(/\(/g,'%28').replace(/\)/g,'%29');
 
@@ -8,6 +8,10 @@ export function buildComment(subreddit: string, providers: ProviderLink[], analy
   const modmail = `https://www.reddit.com/message/compose?to=%2Fr%2F${encodeURIComponent(subreddit)}`;
   return [
     'This is an automatic comment used to help identify possible sources of this post’s media.',
+    '',
+    '**What may be visible:**',
+    '',
+    analysis.description||'No reliable visual description could be generated for this media.',
     '',
     '**Automatic source check:**',
     '',
