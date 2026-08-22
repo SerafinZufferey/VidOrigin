@@ -2,7 +2,7 @@ import {promises as fs} from 'node:fs';
 import {config} from './config.js';
 
 export type SourceMatch={url:string;title:string;frameCount:number;kind:'full'|'partial'};
-export type SourceAnalysis={summary:string;description:string;context?:string;matches:SourceMatch[];labels:string[]};
+export type SourceAnalysis={summary:string;description:string;context?:string;matches:SourceMatch[];relatedMatches?:SourceMatch[];labels:string[]};
 
 type WebPage={url?:string;pageTitle?:string;fullMatchingImages?:unknown[];partialMatchingImages?:unknown[]};
 type WebDetection={pagesWithMatchingImages?:WebPage[];bestGuessLabels?:{label?:string}[];webEntities?:Annotation[]};
@@ -73,18 +73,20 @@ export async function analyzeSources(files:string[]):Promise<SourceAnalysis>{
     }
   }
   const ranked=[...matches.values()]
-    .filter(match=>match.kind==='full'||match.frameCount>=2||files.length===1)
+    .filter(match=>match.kind==='full'||match.frameCount>=2)
     .sort((a,b)=>Number(b.kind==='full')-Number(a.kind==='full')||b.frameCount-a.frameCount)
     .slice(0,5);
+  const relatedMatches=files.length===1?[...matches.values()]
+    .filter(match=>match.kind==='partial'&&match.frameCount===1)
+    .sort((a,b)=>a.title.localeCompare(b.title))
+    .slice(0,5):[];
   const summary=ranked.length
-    ? ranked[0]!.kind==='full'
-      ? `${ranked.length} possible source ${ranked.length===1?'lead was':'leads were'} found. The strongest lead is a page where Google detected a matching image. Manual review is still required; this does not establish original authorship.`
-      : `${ranked.length} possible partial ${ranked.length===1?'match was':'matches were'} found for this image. These weaker leads can result from crops, compression, embedded recommendations, or visually similar content and require careful manual review.`
+    ? `${ranked.length} possible source ${ranked.length===1?'lead was':'leads were'} found. The strongest lead is ${ranked[0]!.kind==='full'?'a page where Google detected a matching image':`supported by ${ranked[0]!.frameCount} separate frames`}. Manual review is still required; this does not establish original authorship.`
     : `No sufficiently strong source match was found. Weak visual similarities were omitted because they can be unrelated. This does not prove that the media is original or previously unpublished.`;
   const rankedLandmarks=[...landmarks.values()].sort((a,b)=>b.count-a.count||b.score-a.score).map(item=>item.label).slice(0,2);
   const rankedLabels=[...labels.values()].sort((a,b)=>b.count-a.count||b.score-a.score).map(item=>item.label).filter(label=>!rankedLandmarks.some(landmark=>landmark.toLocaleLowerCase('en')===label.toLocaleLowerCase('en'))).slice(0,8);
   const rankedContext=[...contextHints.values()].sort((a,b)=>b.count-a.count||b.score-a.score).map(item=>item.label).filter(Boolean).slice(0,3);
   const description=naturalDescription(rankedLabels,rankedLandmarks);
   const context=rankedContext.length?`Google's web context suggests a possible connection to ${humanList(rankedContext)}. This is a contextual clue, not a confirmed identification or source attribution.`:undefined;
-  return{summary,description,...(context?{context}:{}),matches:ranked,labels:rankedLabels};
+  return{summary,description,...(context?{context}:{}),matches:ranked,...(relatedMatches.length?{relatedMatches}:{}),labels:rankedLabels};
 }

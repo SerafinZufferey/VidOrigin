@@ -1,5 +1,5 @@
 export type ProviderLink = { name: string; url: string };
-export type SourceAnalysis={summary:string;description?:string;context?:string;matches:{url:string;title:string;frameCount:number;kind:'full'|'partial'}[];labels:string[]};
+export type SourceAnalysis={summary:string;description?:string;context?:string;matches:{url:string;title:string;frameCount:number;kind:'full'|'partial'}[];relatedMatches?:{url:string;title:string;frameCount:number;kind:'full'|'partial'}[];labels:string[]};
 const markdownLabel=(value:string)=>value.replace(/[\[\]\\]/g,'').slice(0,160);
 const markdownUrl=(value:string)=>value.replace(/\(/g,'%28').replace(/\)/g,'%29');
 
