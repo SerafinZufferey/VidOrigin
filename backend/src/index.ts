@@ -35,27 +35,28 @@ const inputSchema=z.discriminatedUnion('mediaType',[
 type Input=z.infer<typeof inputSchema>;
 const authenticate=(req:express.Request)=>verifySignature(req.headers as Record<string,string|undefined>,req.rawBody||Buffer.alloc(0),config.DEVVIT_SHARED_SECRET);
 
-async function processMedia(input:Input,id?:string):Promise<{session:Session;dir:string;files:string[]}>{
+async function processMedia(input:Input,id?:string,preserveOriginalImages=false):Promise<{session:Session;dir:string;files:string[]}>{
   if(active>=config.MAX_CONCURRENT_JOBS)throw new Error('The media processor is busy. Please try again shortly.');
   if((input.mediaType==='video'||input.mediaType==='gif')&&input.declaredDuration&&input.declaredDuration>config.MAX_VIDEO_DURATION_SECONDS)throw new Error('This video is too long to process.');
   active++;let dir:string|undefined;
   try{
-    const created=await createSessionDir(id);dir=created.dir;let assets:string[]=[];let duration:number|undefined;
+    const created=await createSessionDir(id);dir=created.dir;let assets:string[]=[];let analysisFiles:string[]=[];let duration:number|undefined;
     if(input.mediaType==='video'||input.mediaType==='gif'){
       const raw=input.mediaUrls[0];const source=path.join(dir,input.mediaType==='gif'?'source.gif':'source.mp4');
       if(isNativeRedditVideo(raw))await downloadVideo(await validateMediaUrl(raw),source);
       else if(input.mediaType==='gif')await downloadImage(await validateGifUrl(raw),source,validateGifUrl,true);
       else await downloadExternalVideo(raw,source);
-      duration=await probe(source);const candidates=await extractCandidates(source,dir,duration);await fs.unlink(source).catch(()=>undefined);assets=await selectFrames(candidates,dir,10);
+      duration=await probe(source);const candidates=await extractCandidates(source,dir,duration);await fs.unlink(source).catch(()=>undefined);assets=await selectFrames(candidates,dir,10);analysisFiles=assets;
     }else{
       let totalBytes=0;
       for(const [index,raw] of input.mediaUrls.entries()){
         const source=path.join(dir,`source-${index}.image`);totalBytes+=await downloadImage(await validateImageUrl(raw),source);
-        if(totalBytes>config.MAX_VIDEO_BYTES)throw new Error('The gallery is too large to process.');assets.push(await prepareImage(source,dir));
+        if(totalBytes>config.MAX_VIDEO_BYTES)throw new Error('The gallery is too large to process.');assets.push(await prepareImage(source,dir,!preserveOriginalImages));if(preserveOriginalImages)analysisFiles.push(source);
       }
+      if(!preserveOriginalImages)analysisFiles=assets;
     }
     const now=new Date();const session:Session={id:created.id,createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+config.SESSION_TTL_MINUTES*60_000).toISOString(),postId:input.postId,subreddit:input.subreddit,mediaType:input.mediaType,assets:assets.map(file=>path.basename(file))};
-    await saveSession(dir,session);log.info({postId:input.postId,mediaType:input.mediaType,assetCount:assets.length,duration},'source search media processed');return{session,dir,files:assets};
+    await saveSession(dir,session);log.info({postId:input.postId,mediaType:input.mediaType,assetCount:assets.length,duration},'source search media processed');return{session,dir,files:analysisFiles};
   }catch(error){if(dir)await fs.rm(dir,{recursive:true,force:true}).catch(()=>undefined);throw error;}finally{active--;}
 }
 
@@ -66,7 +67,7 @@ app.get('/healthz',(_req,res)=>res.json({ok:true,activeJobs:active}));
 app.post('/api/v1/analyses',async(req,res)=>{
   if(!authenticate(req))return res.status(401).json({error:'Backend authentication failed.'});
   const parsed=inputSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({error:'The processing request was invalid.'});let dir:string|undefined;
-  try{const processed=await processMedia(parsed.data);dir=processed.dir;const analysis=await analyzeSources(processed.files);const recipe=await saveRecipe({...parsed.data,mediaUrls:[...parsed.data.mediaUrls],analysis});await fs.rm(processed.dir,{recursive:true,force:true});dir=undefined;return res.status(201).json({searchId:recipe.id,analysis,providers:providers.map(p=>({name:p.name,url:`${config.publicBaseUrl}/s/${recipe.id}/${p.slug}`}))});}
+  try{const processed=await processMedia(parsed.data,undefined,true);dir=processed.dir;const analysis=await analyzeSources(processed.files);const recipe=await saveRecipe({...parsed.data,mediaUrls:[...parsed.data.mediaUrls],analysis});await fs.rm(processed.dir,{recursive:true,force:true});dir=undefined;return res.status(201).json({searchId:recipe.id,analysis,providers:providers.map(p=>({name:p.name,url:`${config.publicBaseUrl}/s/${recipe.id}/${p.slug}`}))});}
   catch(error){if(dir)await fs.rm(dir,{recursive:true,force:true}).catch(()=>undefined);const message=error instanceof Error?error.message:'Media analysis failed.';log.warn({err:{message},postId:parsed.data.postId},'automatic source analysis failed');return res.status(/too (large|long)/i.test(message)?413:422).json({error:message});}
 });
 app.post('/api/v1/posts/:postId/delete',async(req,res)=>{if(!authenticate(req))return res.status(401).json({error:'Backend authentication failed.'});if(!/^t3_[a-z0-9]+$/i.test(req.params.postId))return res.status(400).json({error:'Invalid post ID.'});await deleteRecipesForPost(req.params.postId);return res.status(204).send();});

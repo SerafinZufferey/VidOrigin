@@ -368,7 +368,8 @@ export async function downloadImage(
 
 export async function prepareImage(
   source:string,
-  dir:string
+  dir:string,
+  removeSource=true
 ):Promise<string>{
   const output=path.join(
     dir,
@@ -396,7 +397,9 @@ export async function prepareImage(
     })
     .toFile(output);
 
-  await fs.unlink(source).catch(()=>undefined);
+  if(removeSource){
+    await fs.unlink(source).catch(()=>undefined);
+  }
 
   return output;
 }
