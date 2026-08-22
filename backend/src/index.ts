@@ -49,7 +49,7 @@ app.post('/api/v1/sessions',async(req,res)=>{
   duration=await probe(video);
   const candidates=await extractCandidates(video,dir,duration);
   await fs.unlink(video).catch(()=>undefined);
-  assets=await selectFrames(candidates,dir,7);    }else{
+  assets=await selectFrames(candidates,dir,10);    }else{
       let totalBytes=0;assets=[];
       for(const [index,raw] of parsed.data.mediaUrls.entries()){
         const media=await validateImageUrl(raw);const source=path.join(dir,`source-${index}.image`);totalBytes+=await downloadImage(media,source);if(totalBytes>config.MAX_VIDEO_BYTES)throw new Error('The gallery is too large to process.');assets.push(await prepareImage(source,dir));

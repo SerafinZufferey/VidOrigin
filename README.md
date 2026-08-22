@@ -23,7 +23,7 @@ The backend is required because Devvit does not provide FFmpeg or durable proces
 
 Media is detected without moderator input. Native video uses `Post.secureMedia.redditVideo.fallbackUrl`; a gallery uses valid entries from `Post.gallery`; a single image uses the native Reddit URL in `Post.url`. The backend independently accepts only HTTPS `v.redd.it`, `i.redd.it`, and `preview.redd.it`, validates DNS and redirects, and never accepts a browser-supplied fetch target.
 
-Implemented provider landing pages: Google Lens, SauceNAO, IQDB, Yandex Images, TinEye, and Bing Visual Search. Each landing page exposes one user-clicked search per image or selected video frame, while the public Reddit comment still contains only one link per provider. These are public consumer URL-search entry points, not claimed APIs; provider behavior can change. Google Images is not listed separately because its old reverse-search flow is now Google Lens. No provider is scraped, no tabs open automatically, and no result is described as definitely original.
+Implemented provider landing pages: Google Lens, SauceNAO, Yandex Images, and TinEye. Each landing page exposes one user-clicked search per image or selected video frame, while the public Reddit comment still contains only one link per provider. These are public consumer URL-search entry points, not claimed APIs; provider behavior can change. Google Images is not listed separately because its old reverse-search flow is now Google Lens. IQDB and Bing Visual Search are not included because they do not currently provide reliable URL-based search links for this workflow. No provider is scraped, no tabs open automatically, and no result is described as definitely original.
 
 ## Directory structure
 

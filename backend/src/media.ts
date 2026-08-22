@@ -476,8 +476,8 @@ export async function extractCandidates(
   );
 
   const fps=Math.min(
-    6,
-    Math.max(0.1,14/duration)
+    10,
+    Math.max(0.1,24/duration)
   );
 
   await run(
@@ -491,7 +491,7 @@ export async function extractCandidates(
       '-vf',
       `fps=${fps},scale='min(960,iw)':-2:flags=lanczos`,
       '-frames:v',
-      '16',
+      '24',
       '-q:v',
       '3',
       pattern
@@ -583,7 +583,7 @@ const distance=(
 export async function selectFrames(
   files:string[],
   dir:string,
-  count=7
+  count=10
 ):Promise<string[]>{
   const candidates=(
     await Promise.all(
