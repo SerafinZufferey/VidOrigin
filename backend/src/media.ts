@@ -8,7 +8,10 @@ import path from 'node:path';
 import sharp from 'sharp';
 import {config} from './config.js';
 
-const VIDEO_HOSTS=new Set(['v.redd.it']);
+const VIDEO_HOSTS=new Set([
+  'v.redd.it',
+  'packaged-media.redd.it'
+]);
 
 const IMAGE_HOSTS=new Set([
   'i.redd.it',
@@ -150,7 +153,15 @@ export async function downloadExternalVideo(
       clearTimeout(timer);
 
       if(code===0){
-        resolve();
+        fs.stat(destination)
+          .then(stat=>{
+            if(!stat.isFile()||stat.size===0){
+              reject(new Error('External video download completed without producing a usable video file.'));
+            }else{
+              resolve();
+            }
+          })
+          .catch(()=>reject(new Error('External video download completed without producing a usable video file.')));
       }else{
         reject(
           new Error(
@@ -244,6 +255,10 @@ export async function downloadVideo(
       limiter,
       createWriteStream(destination,{flags:'wx'})
     );
+
+    if(bytes===0){
+      throw new Error('Reddit returned an empty video file.');
+    }
 
     return;
   }
