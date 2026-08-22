@@ -17,16 +17,17 @@
     ]
   },
   "permissions": {
-    "reddit": true,
-    "redis": true,
-    "http": {
-      "enable": true,
-      "domains": [
-        "identifying-functions-receiver-zip.trycloudflare.com",
-        "wzfzpbaxrqdtmvspiss.supabase.co"
-      ]
-    }
-  },
+  "reddit": true,
+  "redis": true,
+  "http": {
+    "enable": true,
+    "domains": [
+      "identifying-functions-receiver-zip.trycloudflare.com",
+      "wzfzpbaxrqdtmvspiss.supabase.co",
+      "vidorigin-backend-production.up.railway.app"
+    ]
+  }
+},
   "settings": {
     "global": {
       "backend-url": {
