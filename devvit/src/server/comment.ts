@@ -17,7 +17,7 @@ export function buildComment(subreddit: string, providers: ProviderLink[], analy
     '**Automatic source check:**',
     '',
     analysis.summary,
-    ...(analysis.matches.length?['',...analysis.matches.slice(0,3).map((match,index)=>`${index+1}. [${markdownLabel(match.title||new URL(match.url).hostname)}](${markdownUrl(match.url)}) — matched ${match.frameCount} ${match.frameCount===1?'image':'images'}`)]:[]),
+    ...(analysis.matches.length?['',...analysis.matches.slice(0,3).map((match,index)=>`${index+1}. [${markdownLabel(match.title||new URL(match.url).hostname)}](${markdownUrl(match.url)}) — ${match.kind==='partial'&&match.frameCount===1?'possible partial match':`matched ${match.frameCount} ${match.frameCount===1?'image':'images'}`}`)]:[]),
     '',
     '**Reverse Source Search:**',
     '',
